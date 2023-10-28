@@ -72,7 +72,56 @@ string compile(Program p) {
 string compile(Program p, string classname) {
   string result = ".class public " + classname + "\n.super java/lang/Object\n\n.method public <init>()V\n\taload_0\n\tinvokespecial java/lang/Object/<init>()V\n\treturn\n.end method\n\n.method public static main([Ljava/lang/String;)V\n";
   // result += "\t.limit stack 1000\n\t.limit locals 1000\n\n";
-  result += compile(p);
+  // calculate and declare stack size and number of local variables
+  map<string, int> state;
+  vector<string> stmts;
+  ListStmt stmt = p->u.prog_.liststmt_;
+  while (stmt) {
+    stmts.push_back(compile(stmt->stmt_, state));
+    stmt = stmt->liststmt_;
+  }
+  int max_stack = 0;
+  int max_locals = 1;  // 1 for *this pointer
+  for (string s : stmts) {
+    int stack = 0;
+    int locals = 0;
+    stringstream ss(s);
+    string line;
+    while (getline(ss, line)) {
+      // strip line
+      line.erase(remove_if(line.begin(), line.end(), ::isspace), line.end());
+      if (line == "") continue;
+      if (line.find("iadd") != string::npos || line.find("isub") != string::npos || line.find("imul") != string::npos || line.find("idiv") != string::npos) {
+        stack--;
+      }
+      else if (line.find("istore") != string::npos || line.find("iload") != string::npos) {
+        stack++;
+        locals++;
+      }
+      else if (line.find("swap") != string::npos) {
+       
+      }
+      else if (line.find("getstaticjava/lang/System/outLjava/io/PrintStream;") != string::npos) {
+        stack++;
+      }
+      else if (line.find("invokevirtualjava/io/PrintStream/println(I)V") != string::npos) {
+        stack--;
+      }
+      else if (line.find("ldc") != string::npos) {
+        stack++;
+      }
+      else {
+        printf("Unimplemented!\n");
+        exit(1);
+      }
+      max_stack = max(max_stack, stack);
+      max_locals = max(max_locals, locals);
+    }
+  }
+  result += "\t.limit stack " + to_string(max_stack) + "\n\t.limit locals " + to_string(max_locals) + "\n\n";
+  for (string s : stmts) {
+    result += s;
+  }
   result += "\n\treturn\n.end method\n";
   return result;
 }

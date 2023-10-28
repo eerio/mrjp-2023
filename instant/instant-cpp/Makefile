@@ -13,7 +13,7 @@ OBJS = Absyn.o Buffer.o Lexer.o Parser.o Printer.o
 
 .PHONY : clean distclean
 
-all : TestInstant
+all : insc_jvm insc_llvm
 
 clean :
 	rm -f *.o TestInstant Instant.aux Instant.log Instant.pdf Instant.dvi Instant.ps Instant
@@ -21,13 +21,13 @@ clean :
 distclean : clean
 	rm -f Absyn.h Absyn.c Bison.h Buffer.h Buffer.c Instant.l Lexer.c Instant.y Parser.h Parser.c Printer.c Printer.h Skeleton.c Skeleton.h Test.c Makefile Instant.tex
 
-insc_jvm : ${OBJS} insc_jvm.o
+insc_jvm: ${OBJS} insc_jvm.o
 	@echo "Linking insc_jvm..."
 	g++ -g ${OBJS} insc_jvm.o -o insc_jvm
 
-insc_llvm : ${OBJS} insc_llvm.o
+insc_llvm: ${OBJS} insc_llvm.o
 	@echo "Linking insc_llvm..."
-	g++ -g ${OBJS} insc_llvm -o insc_llvm
+	g++ -g ${OBJS} insc_llvm.o -o insc_llvm
 
 Absyn.o : Absyn.c Absyn.h
 	${CC} ${CCFLAGS} -c Absyn.c
@@ -52,8 +52,8 @@ Parser.o : Parser.c Absyn.h Bison.h
 Printer.o : Printer.c Printer.h Absyn.h
 	${CC} ${CCFLAGS} -c Printer.c
 
-insc_jvm: insc_jvm.cpp Parser.h Printer.h Absyn.h
+insc_jvm.o: insc_jvm.cpp Parser.h Printer.h Absyn.h
 	g++ -g -Wall -Wsign-conversion -c insc_jvm.cpp
 
-insc_llvm: insc_llvm.cpp Parser.h Printer.h Absyn.h
+insc_llvm.o: insc_llvm.cpp Parser.h Printer.h Absyn.h
 	g++ -g -Wall -Wsign-conversion -c insc_llvm.cpp

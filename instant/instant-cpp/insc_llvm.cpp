@@ -6,6 +6,7 @@ extern "C" {
 #include "Absyn.h"
 }
 
+#include <fstream>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -116,15 +117,19 @@ int main(int argc, char ** argv) {
     printf("%s\n\n", printProgram(parse_tree));
     printf("Compiling...\n");
     // get base of filename (without extension)
-    string classname = filename ? filesystem::path(filename).stem() : "out";
+    // filename = argc > 1 ? argv[1] : stdin;
+    string classname = argc > 1 ? filename : "out";
     string bytecode = compile(parse_tree);
-    FILE *output = fopen((classname + ".ll").c_str(), "w");
-    fprintf(output, "%s", bytecode.c_str());
-    fclose(output);
-    system(("llc " + classname + ".ll").c_str());    
-
-    system(("llc " + classname + ".ll" + " -o " + classname + ".bc").c_str());
-    system(("lli " + classname + ".ll").c_str());
+    ofstream outfile;
+    outfile.open((filesystem::path(classname).replace_extension("ll").string()).c_str());
+    if (!outfile.is_open()) {
+      cout << "Unable to open file " << classname << ".ll" << endl;
+      exit(1);
+    }
+    outfile << bytecode;
+    outfile.close();
+    system(("llvm-as " + filesystem::path(classname).replace_extension("ll").string() + " -o " + filesystem::path(classname).replace_extension("bc").string()).c_str());
+    // system(("lli " + classname + ".ll").c_str());
     free_Program(parse_tree);
     // printerQuit();
     return 0;

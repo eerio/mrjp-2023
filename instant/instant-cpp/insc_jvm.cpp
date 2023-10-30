@@ -6,6 +6,7 @@ extern "C" {
 #include "Absyn.h"
 }
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <map>
@@ -18,9 +19,43 @@ using namespace std;
 string compile(Exp e, map<string, int>& state) {
   switch (e->kind) {
     case Exp_::is_ExpLit:
-      return "ldc " + to_string(e->u.explit_.integer_) + "\n";
+      // use optimal jvm isntruction based on value of literal
+      if (e->u.explit_.integer_ == 0) {
+        return "iconst_0\n";
+      }
+      else if (e->u.explit_.integer_ == 1) {
+        return "iconst_1\n";
+      }
+      else if (e->u.explit_.integer_ == 2) {
+        return "iconst_2\n";
+      }
+      else if (e->u.explit_.integer_ == 3) {
+        return "iconst_3\n";
+      }
+      else if (e->u.explit_.integer_ == 4) {
+        return "iconst_4\n";
+      }
+      else if (e->u.explit_.integer_ == 5) {
+        return "iconst_5\n";
+      }
+      else if (e->u.explit_.integer_ >= -128 && e->u.explit_.integer_ <= 127) {
+        return "bipush " + to_string(e->u.explit_.integer_) + "\n";
+      }
+      // else if (e->u.explit_.integer_ >= -32768 && e->u.explit_.integer_ <= 32767) {
+      //   return "sipush " + to_string(e->u.explit_.integer_) + "\n";
+      // }
+      else {
+        return "ldc " + to_string(e->u.explit_.integer_) + "\n";
+      }
     case Exp_::is_ExpAdd:
-      return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
+      // if tree of exp2 is higher than tree of exp1, compile exp2 first
+      if (e->u.expadd_.exp_2->kind == Exp_::is_ExpAdd || e->u.expadd_.exp_2->kind == Exp_::is_ExpSub || e->u.expadd_.exp_2->kind == Exp_::is_ExpMul || e->u.expadd_.exp_2->kind == Exp_::is_ExpDiv) {
+        return compile(e->u.expadd_.exp_2, state) + compile(e->u.expadd_.exp_1, state) + "iadd\n";
+      }
+      else {
+        return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
+      }
+      // return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
     case Exp_::is_ExpSub:
       return compile(e->u.expsub_.exp_1, state) + compile(e->u.expsub_.exp_2, state) + "isub\n";
     case Exp_::is_ExpMul:
@@ -80,32 +115,38 @@ string compile(Program p, string classname) {
     stmts.push_back(compile(stmt->stmt_, state));
     stmt = stmt->liststmt_;
   }
-  int max_stack = 0;
-  int max_locals = 1;  // 1 for *this pointer
+  int max_stack = 0, stack = 0, locals = 1;
   for (string s : stmts) {
-    int stack = 0;
-    int locals = 0;
     stringstream ss(s);
     string line;
     while (getline(ss, line)) {
-      // strip line
-      line.erase(remove_if(line.begin(), line.end(), ::isspace), line.end());
-      if (line == "") continue;
       if (line.find("iadd") != string::npos || line.find("isub") != string::npos || line.find("imul") != string::npos || line.find("idiv") != string::npos) {
         stack--;
       }
-      else if (line.find("istore") != string::npos || line.find("iload") != string::npos) {
+      else if (line.find("iconst") != string::npos) {
         stack++;
+      }
+      else if (line.find("bipush") != string::npos) {
+        stack++;
+      }
+      // else if (line.find("sipush") != string::npos) {
+      //   stack += 2;
+      // }
+      else if (line.find("istore") != string::npos) {
+        stack--;
         locals++;
+      }
+      else if (line.find("iload") != string::npos) {
+        stack++;
       }
       else if (line.find("swap") != string::npos) {
        
       }
-      else if (line.find("getstaticjava/lang/System/outLjava/io/PrintStream;") != string::npos) {
+      else if (line.find("getstatic") != string::npos) {
         stack++;
       }
-      else if (line.find("invokevirtualjava/io/PrintStream/println(I)V") != string::npos) {
-        stack--;
+      else if (line.find("invokevirtual java/io/PrintStream/println(I)V") != string::npos) {
+        stack -= 2;
       }
       else if (line.find("ldc") != string::npos) {
         stack++;
@@ -115,10 +156,9 @@ string compile(Program p, string classname) {
         exit(1);
       }
       max_stack = max(max_stack, stack);
-      max_locals = max(max_locals, locals);
     }
   }
-  result += "\t.limit stack " + to_string(max_stack) + "\n\t.limit locals " + to_string(max_locals) + "\n\n";
+  result += "\t.limit stack " + to_string(max_stack) + "\n\t.limit locals " + to_string(locals) + "\n\n";
   for (string s : stmts) {
     result += s;
   }
@@ -153,15 +193,17 @@ int main(int argc, char ** argv) {
     printf("[Linearized Tree]\n");
     printf("%s\n\n", printProgram(parse_tree));
     printf("Compiling...\n");
-    string classname = "Test";
-    string bytecode = compile(parse_tree, classname);
-    FILE *output = fopen((classname + ".j").c_str(), "w");
+    string classname = argc > 1 ? filename : "out";
+    string bytecode = compile(parse_tree, filesystem::path(classname).stem());
+    FILE *output = fopen((filesystem::path(classname).replace_extension("j").string()).c_str(), "w");
     fprintf(output, "%s", bytecode.c_str());
     fclose(output);
-    system(("java -jar ../jasmin.jar " + classname + ".j").c_str());
-    system(("java " + classname).c_str());
+    cout << "executing: " << ("java -jar ../jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d .") << '\n';
+    system(("java -jar lib/jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d " + filesystem::path(classname).parent_path().string()).c_str());
+    // system(("java -jar ../jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + "-d ").c_str());
+    // system(("java " + classname).c_str());
     free_Program(parse_tree);
-    printerQuit();
+    // printerQuit();
     return 0;
   }
 

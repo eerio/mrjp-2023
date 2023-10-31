@@ -14,6 +14,7 @@ extern "C" {
 #include <vector>
 #include <algorithm>
 #include <sstream>
+#include <stack>
 
 using namespace std;
 
@@ -22,27 +23,75 @@ struct State {
   size_t last_intermediate;
 };
 
+Exp get_exp2(Exp e) {
+  if (e->kind == Exp_::is_ExpAdd) { return e->u.expadd_.exp_2; }
+  if (e->kind == Exp_::is_ExpSub) { return e->u.expsub_.exp_2; }
+  if (e->kind == Exp_::is_ExpMul) { return e->u.expmul_.exp_2; }
+  if (e->kind == Exp_::is_ExpDiv) { return e->u.expdiv_.exp_2; }
+  printf("Unimplemented!\n");
+  exit(1);
+}
+
+Exp get_exp1(Exp e) {
+  if (e->kind == Exp_::is_ExpAdd) { return e->u.expadd_.exp_1; }
+  if (e->kind == Exp_::is_ExpSub) { return e->u.expsub_.exp_1; }
+  if (e->kind == Exp_::is_ExpMul) { return e->u.expmul_.exp_1; }
+  if (e->kind == Exp_::is_ExpDiv) { return e->u.expdiv_.exp_1; }
+  printf("Unimplemented!\n");
+  exit(1);
+}
+
+
+
 string compile(Exp e, State& state) {
-  if (e->kind == Exp_::is_ExpLit) {
-    state.last_intermediate++;
-    return "%t" + to_string(state.last_intermediate) + " = add i32 0, " + to_string(e->u.explit_.integer_) + "\n";
-  } else if (e->kind == Exp_::is_ExpVar) {
-    state.last_intermediate++;
-    auto it = state.var_of_ident.find(e->u.expvar_.ident_);
-    if (it == state.var_of_ident.end()) {
-      cout << "Unbound variable: " << e->u.expvar_.ident_ << endl;
-      exit(1);
+  map<Exp, size_t> intermediate_of_exp;
+  string result;
+  stack<pair<Exp, bool>> todo;
+  todo.push({e, false});
+  while (!todo.empty()) {
+    auto [e, is_visiting] = todo.top();
+    todo.pop();
+
+    if (!e) { continue; }
+
+    if (e->kind == Exp_::is_ExpLit) {
+      state.last_intermediate++;
+      intermediate_of_exp[e] = state.last_intermediate;
+      result += "%t" + to_string(state.last_intermediate) + " = add i32 0, " + to_string(e->u.explit_.integer_) + "\n";
+      continue;
+    } else if (e->kind == Exp_::is_ExpVar) {
+      state.last_intermediate++;
+      intermediate_of_exp[e] = state.last_intermediate;
+      auto it = state.var_of_ident.find(e->u.expvar_.ident_);
+      if (it == state.var_of_ident.end()) {
+        cout << "Unbound variable: " << e->u.expvar_.ident_ << endl;
+        exit(1);
+      }
+      result += "%t" + to_string(state.last_intermediate) + " = load i32, i32* %v" + to_string(it->second) + "\n";
+      continue;
     }
-    return "%t" + to_string(state.last_intermediate) + " = load i32, i32* %v" + to_string(it->second) + "\n";
-  } else {
-    auto op = e->kind == Exp_::is_ExpAdd ? "add" : e->kind == Exp_::is_ExpSub ? "sub" : e->kind == Exp_::is_ExpMul ? "mul" : "sdiv";
-    auto res1 = compile(e->u.expadd_.exp_1, state);
-    auto res1_reg = "%t" + to_string(state.last_intermediate);
-    auto res2 = compile(e->u.expadd_.exp_2, state);
-    auto res2_reg = "%t" + to_string(state.last_intermediate);
-    state.last_intermediate++;
-    return res1 + res2 + "%t" + to_string(state.last_intermediate) + " = " + op + " " + "i32 " + res1_reg + ", " + res2_reg + "\n";
+    
+    if (is_visiting) {
+      state.last_intermediate++;
+      intermediate_of_exp[e] = state.last_intermediate;
+
+      auto op = e->kind == Exp_::is_ExpAdd ? "add" : e->kind == Exp_::is_ExpSub ? "sub" : e->kind == Exp_::is_ExpMul ? "mul" : "sdiv";
+      auto res1_reg = "%t" + to_string(intermediate_of_exp[get_exp1(e)]);
+      auto res2_reg = "%t" + to_string(intermediate_of_exp[get_exp2(e)]);
+      result += "%t" + to_string(state.last_intermediate) + " = " + op + " " + "i32 " + res1_reg + ", " + res2_reg + "\n";
+      // auto res1 = compile(get_exp1(e), state);
+      
+      // auto res2 = compile(get_exp2(e), state);
+      // auto res2_reg = "%t" + to_string(state.last_intermediate);
+      
+      // return res1 + res2 + 
+    } else {
+      todo.push({e, true});
+      todo.push({get_exp1(e), false});
+      todo.push({get_exp2(e), false});
+    }
   }
+  return result;
 }
 
 string compile(Stmt s, State& state) {

@@ -13,10 +13,131 @@ extern "C" {
 #include <vector>
 #include <algorithm>
 #include <sstream>
+#include <stack>
 
 using namespace std;
 
+map<Exp, size_t> height_of;
+
+Exp get_exp2(Exp e) {
+  if (e->kind == Exp_::is_ExpAdd) { return e->u.expadd_.exp_2; }
+  if (e->kind == Exp_::is_ExpSub) { return e->u.expsub_.exp_2; }
+  if (e->kind == Exp_::is_ExpMul) { return e->u.expmul_.exp_2; }
+  if (e->kind == Exp_::is_ExpDiv) { return e->u.expdiv_.exp_2; }
+  printf("Unimplemented!\n");
+  exit(1);
+}
+
+Exp get_exp1(Exp e) {
+  if (e->kind == Exp_::is_ExpAdd) { return e->u.expadd_.exp_1; }
+  if (e->kind == Exp_::is_ExpSub) { return e->u.expsub_.exp_1; }
+  if (e->kind == Exp_::is_ExpMul) { return e->u.expmul_.exp_1; }
+  if (e->kind == Exp_::is_ExpDiv) { return e->u.expdiv_.exp_1; }
+  printf("Unimplemented!\n");
+  exit(1);
+}
+
+void set_height(Exp e) {
+  // iterative post-order
+  stack<pair<Exp, bool>> stack;
+  stack.push({e, false});
+  while (!stack.empty()) {
+    auto [node, is_visiting] = stack.top();
+    stack.pop();
+
+    if (!node) { continue; }
+    if (node->kind == Exp_::is_ExpLit || node->kind == Exp_::is_ExpVar) {
+      height_of[node] = 1;
+      continue;
+    }
+
+    if (is_visiting) {
+      auto h1 = height_of[get_exp1(node)];
+      auto h2 = height_of[get_exp2(node)];
+      height_of[node] = min(max(h1, h2 + 1), max(h1 + 1, h2));
+    } else {
+      stack.push({node, true});
+      stack.push({get_exp1(node), false});
+      stack.push({get_exp2(node), false});
+    }
+  }
+}
+
+
 string compile(Exp e, map<string, int>& state) {
+  string result;
+  stack<tuple<Exp, bool, bool>> todo;
+  todo.push({e, false, false});
+  while (!todo.empty()) {
+    auto [node, is_visiting, was_swapped] = todo.top();
+    todo.pop();
+
+    if (!node) { continue; }
+    if (node->kind == Exp_::is_ExpLit) {
+      // use optimal jvm isntruction based on value of literal
+      string int_expr = to_string(node->u.explit_.integer_);
+      if (node->u.explit_.integer_ <= 5) {
+        result += "iconst_" + int_expr + "\n";
+      }
+      else if (node->u.explit_.integer_ <= 127) {
+        result += "bipush " + int_expr + "\n";
+      }
+      else if (node->u.explit_.integer_ <= 32767) {
+        result += "sipush " + int_expr + "\n";
+      }
+      else {
+        result += "ldc "    + int_expr + "\n";
+      }
+      continue;
+    } else if (node->kind == Exp_::is_ExpVar) {
+      if (state[node->u.expvar_.ident_] <= 3) {
+        result += "iload_" + to_string(state[node->u.expvar_.ident_]) + "\n";
+      }
+      else {
+        result += "iload " + to_string(state[node->u.expvar_.ident_]) + "\n";
+      }
+      continue;
+    }
+
+    if (is_visiting) {
+      if (node->kind == Exp_::is_ExpAdd) {
+        result += "iadd\n";
+      }
+      else if (node->kind == Exp_::is_ExpSub) {
+        if (!was_swapped) {
+          result += "isub\n";
+        } else {
+          result += "swap\nisub\n";
+        }
+      }
+      else if (node->kind == Exp_::is_ExpMul) {
+        result += "imul\n";
+      }
+      else if (node->kind == Exp_::is_ExpDiv) {
+        if (!was_swapped) {
+          result += "idiv\n";
+        } else {
+          result += "swap\nidiv\n";
+        }
+      }
+    } else {
+      auto h1 = height_of[get_exp1(node)];
+      auto h2 = height_of[get_exp2(node)];
+      if (h1 >= h2) {
+        todo.push({node, true, false});
+        todo.push({get_exp2(node), false, false});
+        todo.push({get_exp1(node), false, false});
+      } else {
+        todo.push({node, true, true});
+        todo.push({get_exp1(node), false, false});
+        todo.push({get_exp2(node), false, false});
+      }
+    }
+  }
+
+  return result;
+
+  // string result;
   switch (e->kind) {
     case Exp_::is_ExpLit:
       // use optimal jvm isntruction based on value of literal
@@ -41,46 +162,91 @@ string compile(Exp e, map<string, int>& state) {
       else if (e->u.explit_.integer_ >= -128 && e->u.explit_.integer_ <= 127) {
         return "bipush " + to_string(e->u.explit_.integer_) + "\n";
       }
-      // else if (e->u.explit_.integer_ >= -32768 && e->u.explit_.integer_ <= 32767) {
-      //   return "sipush " + to_string(e->u.explit_.integer_) + "\n";
-      // }
+      else if (e->u.explit_.integer_ >= -32768 && e->u.explit_.integer_ <= 32767) {
+        return "sipush " + to_string(e->u.explit_.integer_) + "\n";
+      }
       else {
         return "ldc " + to_string(e->u.explit_.integer_) + "\n";
       }
-    case Exp_::is_ExpAdd:
-      // if tree of exp2 is higher than tree of exp1, compile exp2 first
-      if (e->u.expadd_.exp_2->kind == Exp_::is_ExpAdd || e->u.expadd_.exp_2->kind == Exp_::is_ExpSub || e->u.expadd_.exp_2->kind == Exp_::is_ExpMul || e->u.expadd_.exp_2->kind == Exp_::is_ExpDiv) {
-        return compile(e->u.expadd_.exp_2, state) + compile(e->u.expadd_.exp_1, state) + "iadd\n";
+    case Exp_::is_ExpVar:
+      if (state[e->u.expvar_.ident_] <= 3) {
+        return "iload_" + to_string(state[e->u.expvar_.ident_]) + "\n";
       }
       else {
-        return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
+        return "iload " + to_string(state[e->u.expvar_.ident_]) + "\n";
       }
-      // return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
-    case Exp_::is_ExpSub:
-      return compile(e->u.expsub_.exp_1, state) + compile(e->u.expsub_.exp_2, state) + "isub\n";
-    case Exp_::is_ExpMul:
-      return compile(e->u.expmul_.exp_1, state) + compile(e->u.expmul_.exp_2, state) + "imul\n";
-    case Exp_::is_ExpDiv:
-      return compile(e->u.expdiv_.exp_1, state) + compile(e->u.expdiv_.exp_2, state) + "idiv\n";
-    case Exp_::is_ExpVar:
-      return "iload " + to_string(state[e->u.expvar_.ident_]) + "\n";
     default:
-      printf("Unimplemented!\n");
-      exit(1);
-      break;
+      if (height_of[get_exp2(e)] > height_of[get_exp1(e)]) {
+        result += compile(get_exp2(e), state) + compile(get_exp1(e), state);
+        if (e->kind == Exp_::is_ExpAdd) {
+          result += "iadd\n";
+        }
+        else if (e->kind == Exp_::is_ExpSub) {
+          result += "swap\nisub\n";
+        }
+        else if (e->kind == Exp_::is_ExpMul) {
+          result += "imul\n";
+        }
+        else if (e->kind == Exp_::is_ExpDiv) {
+          result += "swap\nidiv\n";
+        }
+      }
+      else {
+        result += compile(get_exp1(e), state) + compile(get_exp2(e), state);
+        if (e->kind == Exp_::is_ExpAdd) {
+          result += "iadd\n";
+        }
+        else if (e->kind == Exp_::is_ExpSub) {
+          result += "isub\n";
+        }
+        else if (e->kind == Exp_::is_ExpMul) {
+          result += "imul\n";
+        }
+        else if (e->kind == Exp_::is_ExpDiv) {
+          result += "idiv\n";
+        }
+        else {
+          printf("Unimplemented!\n");
+          exit(1);
+        }
+        // return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
+      }
+      return result;
+    //     return compile(e->u.expadd_.exp_2, state) + compile(e->u.expadd_.exp_1, state) + "iadd\n";
+    //   // return compile(e->u.expadd_.exp_1, state) + compile(e->u.expadd_.exp_2, state) + "iadd\n";
+    // case Exp_::is_ExpSub:
+    //   return compile(e->u.expsub_.exp_1, state) + compile(e->u.expsub_.exp_2, state) + "isub\n";
+    // case Exp_::is_ExpMul:
+    //   return compile(e->u.expmul_.exp_1, state) + compile(e->u.expmul_.exp_2, state) + "imul\n";
+    // case Exp_::is_ExpDiv:
+    //   return compile(e->u.expdiv_.exp_1, state) + compile(e->u.expdiv_.exp_2, state) + "idiv\n";
+    
+    // default:
+    //   printf("Unimplemented!\n");
+    //   exit(1);
+    //   break;
   }
 }
 
 string compile(Stmt s, map<string, int>& state) {
   map<string, int>::iterator it;
+  string result;
   switch (s->kind) {
     case Stmt_::is_SAss:
       it = state.find(s->u.sass_.ident_);
       if (it == state.end()) {
         state[s->u.sass_.ident_] = state.size();
       }
-      return compile(s->u.sass_.exp_, state) + "istore " + to_string(state[s->u.sass_.ident_]) + "\n";
+      set_height(s->u.sass_.exp_);
+      result = compile(s->u.sass_.exp_, state);
+      if (state[s->u.sass_.ident_] <= 3) {
+        result += "istore_" + to_string(state[s->u.sass_.ident_]) + "\n";
+      } else {
+        result += "istore " + to_string(state[s->u.sass_.ident_]) + "\n";
+      }
+      return result;
     case Stmt_::is_SExp:
+      set_height(s->u.sexp_.exp_);
       return compile(s->u.sexp_.exp_, state) + "getstatic java/lang/System/out Ljava/io/PrintStream;\n" + "swap\n" + "invokevirtual java/io/PrintStream/println(I)V\n";
     default:
       printf("Unimplemented!\n");
@@ -115,7 +281,7 @@ string compile(Program p, string classname) {
     stmts.push_back(compile(stmt->stmt_, state));
     stmt = stmt->liststmt_;
   }
-  int max_stack = 0, stack = 0, locals = 1;
+  int max_stack = 0, stack = 0, locals = state.size() + 1;
   for (string s : stmts) {
     stringstream ss(s);
     string line;
@@ -129,12 +295,11 @@ string compile(Program p, string classname) {
       else if (line.find("bipush") != string::npos) {
         stack++;
       }
-      // else if (line.find("sipush") != string::npos) {
-      //   stack += 2;
-      // }
+      else if (line.find("sipush") != string::npos) {
+        stack++;  
+      }
       else if (line.find("istore") != string::npos) {
         stack--;
-        locals++;
       }
       else if (line.find("iload") != string::npos) {
         stack++;
@@ -198,8 +363,12 @@ int main(int argc, char ** argv) {
     FILE *output = fopen((filesystem::path(classname).replace_extension("j").string()).c_str(), "w");
     fprintf(output, "%s", bytecode.c_str());
     fclose(output);
-    cout << "executing: " << ("java -jar ../jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d .") << '\n';
-    system(("java -jar lib/jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d " + filesystem::path(classname).parent_path().string()).c_str());
+    cout << "executing: " << ("java -jar ../jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d " + filesystem::path(classname).parent_path().string()) << '\n';
+    if (!filesystem::path(classname).parent_path().string().empty()) {
+      system(("java -jar lib/jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d " + filesystem::path(classname).parent_path().string()).c_str());
+    } else {
+      system(("java -jar lib/jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + " -d .").c_str());
+    }
     // system(("java -jar ../jasmin.jar " + filesystem::path(classname).replace_extension("j").string() + "-d ").c_str());
     // system(("java " + classname).c_str());
     free_Program(parse_tree);

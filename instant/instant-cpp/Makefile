@@ -3,6 +3,9 @@
 CC = gcc -g
 CCFLAGS = --ansi -W -Wall -Wsign-conversion -Wno-unused-parameter -Wno-unused-function -Wno-unneeded-internal-declaration ${CC_OPTS}
 
+BNFC = bnfc
+BNFC_OPTS = -cpp
+
 FLEX = flex
 FLEX_OPTS = -Pinstant_
 
@@ -19,7 +22,7 @@ clean :
 	rm -f *.o TestInstant Instant.aux Instant.log Instant.pdf Instant.dvi Instant.ps Instant
 
 distclean : clean
-	rm -f Absyn.h Absyn.c Bison.h Buffer.h Buffer.c Instant.l Lexer.c Instant.y Parser.h Parser.c Printer.c Printer.h Skeleton.c Skeleton.h Test.c Makefile Instant.tex
+	rm -f Absyn.h Absyn.c Bison.h Buffer.h Buffer.c Instant.l Lexer.c Instant.y Parser.h Parser.c Printer.c Printer.h Skeleton.c Skeleton.h Test.c
 
 insc_jvm: ${OBJS} insc_jvm.o
 	@echo "Linking insc_jvm..."
@@ -28,6 +31,15 @@ insc_jvm: ${OBJS} insc_jvm.o
 insc_llvm: ${OBJS} insc_llvm.o
 	@echo "Linking insc_llvm..."
 	g++ -g ${OBJS} insc_llvm.o -o insc_llvm
+
+insc_jvm.o: insc_jvm.cpp Parser.h Printer.h Absyn.h
+	g++ -g -Wall -Wsign-conversion -c insc_jvm.cpp
+
+insc_llvm.o: insc_llvm.cpp Parser.h Printer.h Absyn.h
+	g++ -g -Wall -Wsign-conversion -c insc_llvm.cpp
+
+Absyn.h Absyn.c Buffer.h Buffer.c Instant.l Instant.y Parser.h Printer.c Printer.h Skeleton.c Skeleton.h: Instant.cf
+	${BNFC} ${BNFC_OPTS} Instant.cf
 
 Absyn.o : Absyn.c Absyn.h
 	${CC} ${CCFLAGS} -c Absyn.c
@@ -51,9 +63,3 @@ Parser.o : Parser.c Absyn.h Bison.h
 
 Printer.o : Printer.c Printer.h Absyn.h
 	${CC} ${CCFLAGS} -c Printer.c
-
-insc_jvm.o: insc_jvm.cpp Parser.h Printer.h Absyn.h
-	g++ -g -Wall -Wsign-conversion -c insc_jvm.cpp
-
-insc_llvm.o: insc_llvm.cpp Parser.h Printer.h Absyn.h
-	g++ -g -Wall -Wsign-conversion -c insc_llvm.cpp

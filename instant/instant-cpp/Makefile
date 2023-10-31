@@ -1,6 +1,7 @@
 ## bnfc 2.9.4.1
 
-CC = gcc -g
+CC = gcc -g -O2
+CPP = g++ -std=c++17 -g -O2
 CCFLAGS = --ansi -W -Wall -Wsign-conversion -Wno-unused-parameter -Wno-unused-function -Wno-unneeded-internal-declaration ${CC_OPTS}
 
 BNFC = bnfc
@@ -25,12 +26,10 @@ distclean: clean
 	rm -f insc_jvm insc_llvm
 
 insc_jvm: ${OBJS} insc_jvm.o
-	@echo "Linking insc_jvm..."
-	g++ -g ${OBJS} insc_jvm.o -o insc_jvm
+	${CPP} ${OBJS} insc_jvm.o -o insc_jvm
 
 insc_llvm: ${OBJS} insc_llvm.o
-	@echo "Linking insc_llvm..."
-	g++ -g ${OBJS} insc_llvm.o -o insc_llvm
+	${CPP} ${OBJS} insc_llvm.o -o insc_llvm
 
 insc_jvm.o: src/insc_jvm.cpp Parser.h Printer.h Absyn.h
 	g++ -g -Wall -Wsign-conversion -c src/insc_jvm.cpp -I .

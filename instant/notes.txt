@@ -1,0 +1,15 @@
+bnfc instalujemy cabalem
+
+cabal init
+cabal install BNFC
+bnfc -m -o build --cpp Instant.cf
+inst flex bison
+make
+cd build
+make
+
+java -jar jasmin.jar File.j
+java File
+
+clang -O0 -o hello.ll -emit-llvm -S hello.c
+llc -O0 -filetype=obj hello.ll

@@ -1,8 +1,8 @@
-Autor: Pawe≈Ç Balawender
+Autor: Paweø Balawender
 pb429141@mimuw.edu.pl
 
 Kompilacja:
 make
 
-Program jest napisany w C++17. U≈ywam BNFC i binding√w do C (te do C++ majƒÖ
-k≈Çopotliwe do naprawienia memory leaki)
+Program jest napisany w C++17. Uøywam BNFC i bindingÛw do C (te do C++ majø
+køopotliwe do naprawienia memory leaki)

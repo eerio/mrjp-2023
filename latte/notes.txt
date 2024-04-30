@@ -1,0 +1,14 @@
+
+Operator precedence languages:
+https://en.wikipedia.org/wiki/Operator-precedence_grammar#cite_note-14
+file:///home/pawel/Downloads/lonati-et-al-2015-operator-precedence-languages-their-automata-theoretic-and-logic-characterization.pdf
+https://epubs.siam.org/doi/epdf/10.1137/140978818
+https://github.com/bzoto/flup
+
+Recursive descent parsing:
+https://en.wikipedia.org/wiki/Operator-precedence_parser
+
+String matching:
+https://cses.fi/problemset/task/1753
+
+Shunting-yard algorithm
